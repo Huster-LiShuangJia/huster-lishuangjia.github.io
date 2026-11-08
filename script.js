@@ -1,0 +1,174 @@
+"use strict";
+
+(() => {
+  let language = "en";
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const mediaControllers = [];
+
+  function updateCopyLabels() {
+    const labels = language === "zh"
+      ? { ready: "复制引用", copied: "已复制", failed: "请选中上方文本复制" }
+      : { ready: "Copy citation", copied: "Copied", failed: "Select the citation above to copy" };
+    document.querySelectorAll(".copy-citation").forEach(button => {
+      button.textContent = labels[button.dataset.copyState || "ready"];
+    });
+  }
+
+  function setLanguage(next) {
+    language = next === "zh" ? "zh" : "en";
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+    document.querySelectorAll("[data-lang]").forEach(el => { el.hidden = el.dataset.lang !== language; });
+    document.querySelectorAll("[data-set-lang]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.setLang === language));
+    });
+    document.querySelectorAll("[data-label-en]").forEach(el => {
+      el.setAttribute("aria-label", el.dataset[language === "zh" ? "labelZh" : "labelEn"]);
+    });
+    document.querySelectorAll("[data-alt-en]").forEach(el => {
+      el.alt = el.dataset[language === "zh" ? "altZh" : "altEn"];
+    });
+    document.getElementById("celebration-status").textContent = "";
+    updateCopyLabels();
+    mediaControllers.forEach(controller => controller.updateLabel());
+    try { localStorage.setItem("jia-li-language", language); } catch (_) { /* Keep static-file support. */ }
+  }
+
+  document.querySelectorAll("[data-set-lang]").forEach(button => {
+    button.addEventListener("click", () => setLanguage(button.dataset.setLang));
+  });
+
+  document.querySelectorAll(".copy-citation").forEach(button => {
+    if (!navigator.clipboard || !window.isSecureContext) return;
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.closest(".citation-body").querySelector("code").textContent);
+        button.dataset.copyState = "copied";
+      } catch (_) {
+        button.dataset.copyState = "failed";
+      }
+      updateCopyLabels();
+    });
+  });
+
+  document.querySelectorAll(".paper").forEach(paper => {
+    const video = paper.querySelector("video");
+    if (!video) return;
+    const media = paper.querySelector(".paper-media");
+    const button = paper.querySelector(".demo-toggle");
+    let hovering = false;
+    let pinned = false;
+    let suppressed = false;
+    let version = 0;
+    function updateLabel() {
+      const playing = !video.paused;
+      button.setAttribute("aria-pressed", String(playing));
+      button.textContent = language === "zh" ? (playing ? "暂停演示" : "播放演示") : (playing ? "Pause demo" : "Play demo");
+    }
+    async function sync() {
+      const thisVersion = ++version;
+      const desired = !document.hidden && !suppressed && (pinned || (hovering && !reducedMotion.matches));
+      if (!desired) {
+        video.pause();
+        media.classList.remove("demo-active");
+        updateLabel();
+        return;
+      }
+      try {
+        await video.play();
+        if (thisVersion === version && !video.paused) media.classList.add("demo-active");
+      } catch (_) {
+        media.classList.remove("demo-active");
+      }
+      updateLabel();
+    }
+    media.addEventListener("pointerenter", event => {
+      if (event.pointerType === "touch") return;
+      hovering = true; suppressed = false; sync();
+    });
+    media.addEventListener("pointerleave", () => { hovering = false; suppressed = false; sync(); });
+    media.addEventListener("focusin", () => { hovering = true; suppressed = false; sync(); });
+    media.addEventListener("focusout", event => {
+      if (!media.contains(event.relatedTarget)) { hovering = false; sync(); }
+    });
+    button.addEventListener("click", () => {
+      if (!video.paused) { pinned = false; suppressed = true; }
+      else { pinned = true; suppressed = false; }
+      sync();
+    });
+    video.addEventListener("pause", updateLabel);
+    video.addEventListener("play", updateLabel);
+    video.addEventListener("error", () => {
+      media.classList.remove("demo-active");
+      button.textContent = language === "zh" ? "演示暂不可用" : "Demo unavailable";
+      button.disabled = true;
+    });
+    const controller = { sync, updateLabel };
+    mediaControllers.push(controller);
+  });
+  document.addEventListener("visibilitychange", () => mediaControllers.forEach(controller => controller.sync()));
+  reducedMotion.addEventListener("change", () => mediaControllers.forEach(controller => controller.sync()));
+
+  const layer = document.getElementById("effect-layer");
+  const emoji = [
+    // 原来的 15 个全部保留。
+    "✨", "🤖", "🥳", "⚡", "🌾", "💧", "🔥", "🤩", "🌈", "🚀", "🥇", "🏆", "💎", "🌌", "🪐",
+    // 星星、流星与闪光。
+    "⭐", "🌟", "💫", "🌠", "☄️",
+    // 扑克牌的四种花色。
+    "♠️", "♥️", "♣️", "♦️",
+    // 雪花、水晶球与思考。
+    "❄️", "🔮", "🤔",
+    // 月亮、月相与月亮表情。
+    "🌙", "🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌚", "🌝", "🌛", "🌜",
+    // 学业。
+    "🎓",
+    // 十二生肖：鼠、牛、虎、兔、龙、蛇、马、羊、猴、鸡、狗、猪。
+    "🐀", "🐂", "🐅", "🐇", "🐉", "🐍", "🐎", "🐐", "🐒", "🐓", "🐕", "🐖",
+    // 积极、开心与鼓励。
+    "😀", "😃", "😄", "😁", "😊", "🥰", "🤗", "😎", "💪", "👏", "🙌", "👍", "🍀", "🌻"
+  ];
+  // 备选（尚未启用）：["✨", "🤖", "🦾", "🌱", "🪐", "🚀"]
+  let emojiIndex = 0;
+  function animateParticle(element, frames, options) {
+    layer.appendChild(element);
+    element.animate(frames, options).finished.then(() => element.remove()).catch(() => element.remove());
+  }
+  document.addEventListener("pointerup", event => {
+    if (event.button !== 0 || reducedMotion.matches || event.target.closest("[data-celebrate]") || window.getSelection().toString()) return;
+    if (layer.childElementCount > 45) return;
+    const item = document.createElement("span");
+    item.className = "click-emoji";
+    item.textContent = emoji[emojiIndex++ % emoji.length];
+    item.style.left = `${Math.max(12, Math.min(innerWidth - 25, event.clientX - 8))}px`;
+    item.style.top = `${event.clientY - 16}px`;
+    animateParticle(item, [{ transform: "translateY(0) scale(1.2)", opacity: 1 }, { transform: "translateY(-65px) scale(1.4)", opacity: 0 }], { duration: 1100, easing: "ease-out" });
+  });
+  document.querySelectorAll("[data-celebrate]").forEach(button => {
+    button.addEventListener("click", () => {
+      document.getElementById("celebration-status").textContent = language === "zh" ? "庆祝 UFO 技术报告发布！" : "Celebrating the UFO technical report release!";
+      if (reducedMotion.matches || layer.childElementCount > 50) return;
+      const rect = button.getBoundingClientRect();
+      const colors = ["#ff6a00", "#ed3d67", "#1e88c8", "#f2bf20", "#4a9b46"];
+      for (let i = 0; i < 35; i++) {
+        const item = document.createElement("span");
+        item.className = "confetti-piece";
+        item.style.left = `${rect.left + rect.width / 2}px`;
+        item.style.top = `${rect.top}px`;
+        item.style.background = colors[i % colors.length];
+        const x = (Math.random() - 0.5) * 390;
+        const y = 90 + Math.random() * 130;
+        animateParticle(item, [
+          { transform: "translate(0,0) rotate(0deg)", opacity: 1 },
+          { transform: `translate(${x * 0.6}px,-90px) rotate(180deg)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${x}px,${y}px) rotate(${360 + i * 15}deg)`, opacity: 0 }
+        ], { duration: 1500 + Math.random() * 450, easing: "cubic-bezier(.15,.5,.5,1)" });
+      }
+    });
+  });
+
+  let saved = "en";
+  try { saved = localStorage.getItem("jia-li-language") || "en"; } catch (_) { /* Keep the default. */ }
+  setLanguage(saved);
+  document.querySelector(".language-switch").hidden = false;
+})();
