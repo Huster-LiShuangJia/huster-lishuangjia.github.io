@@ -9,6 +9,23 @@
   let optedOut = false;
   try { optedOut = localStorage.getItem("jia-li-no-analytics") === "1"; } catch (_) { /* Storage may be disabled. */ }
   const privacySignal = navigator.doNotTrack === "1" || navigator.globalPrivacyControl === true;
+  // Only a deliberate return from the voluntary form can attach future visits.
+  const registration = new URLSearchParams(location.hash.slice(1)).get("visitor-link");
+  if (live && /^[a-f0-9]{64}$/.test(registration || "")) {
+    if (!optedOut && !privacySignal) {
+      try {
+        if (localStorage.getItem("jia-li-registration") !== registration) {
+          localStorage.removeItem("jia-li-visitor");
+          sessionStorage.removeItem("jia-li-visit-session");
+        }
+        localStorage.setItem("jia-li-registration", registration);
+      } catch (_) { /* Remain anonymous without storage. */ }
+    }
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  function registrationToken() {
+    try { return localStorage.getItem("jia-li-registration") || ""; } catch (_) { return ""; }
+  }
 
   function label() {
     if (!button) return;
@@ -25,6 +42,7 @@
       if (optedOut) {
         localStorage.setItem("jia-li-no-analytics", "1");
         localStorage.removeItem("jia-li-visitor");
+        localStorage.removeItem("jia-li-registration");
         sessionStorage.removeItem("jia-li-visit-session");
       } else localStorage.removeItem("jia-li-no-analytics");
     } catch (_) { /* The control still applies to this page. */ }
@@ -59,7 +77,7 @@
       await fetch(endpoint + "/api/track", {
         method: "POST", credentials: "omit", keepalive: true, signal: AbortSignal.timeout(8000),
         headers: { "Content-Type": "text/plain;charset=UTF-8" },
-        body: JSON.stringify({ id: crypto.randomUUID(), visitor: identifier(localStorage, "jia-li-visitor"), session: identifier(sessionStorage, "jia-li-visit-session"), path: location.pathname, referrer: document.referrer, language: navigator.language }),
+        body: JSON.stringify({ id: crypto.randomUUID(), visitor: identifier(localStorage, "jia-li-visitor"), session: identifier(sessionStorage, "jia-li-visit-session"), path: location.pathname, referrer: document.referrer, language: navigator.language, registration: registrationToken() }),
       });
     } catch (_) { /* Statistics must never interrupt the homepage. */ }
     void totals();
