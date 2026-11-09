@@ -3,7 +3,6 @@
 (() => {
   const endpoint = "https://jia-li-website-analytics.yrweexnfqa.chatgpt.site";
   const live = location.origin === "https://huster-lishuangjia.github.io";
-  const button = document.querySelector("[data-tracking-toggle]");
   const status = document.querySelector("[data-stat-status]");
   let recorded = false;
   let optedOut = false;
@@ -26,29 +25,6 @@
   function registrationToken() {
     try { return localStorage.getItem("jia-li-registration") || ""; } catch (_) { return ""; }
   }
-
-  function label() {
-    if (!button) return;
-    const disabled = optedOut || privacySignal;
-    button.disabled = privacySignal;
-    button.querySelector('[data-lang="en"]').textContent = disabled ? "Visit tracking is off" : "Don't count my visits";
-    button.querySelector('[data-lang="zh"]').textContent = disabled ? "已关闭访问记录" : "不记录我的访问";
-    button.setAttribute("aria-pressed", String(disabled));
-  }
-  label();
-  if (button) button.addEventListener("click", () => {
-    optedOut = !optedOut;
-    try {
-      if (optedOut) {
-        localStorage.setItem("jia-li-no-analytics", "1");
-        localStorage.removeItem("jia-li-visitor");
-        localStorage.removeItem("jia-li-registration");
-        sessionStorage.removeItem("jia-li-visit-session");
-      } else localStorage.removeItem("jia-li-no-analytics");
-    } catch (_) { /* The control still applies to this page. */ }
-    label();
-    if (!optedOut) void count();
-  });
 
   function identifier(storage, key) {
     try {
